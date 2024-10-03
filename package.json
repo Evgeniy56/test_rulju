@@ -15,5 +15,9 @@
     "url": "https://github.com/Evgeniy56/test_rulju/issues"
   },
   "homepage": "https://github.com/Evgeniy56/test_rulju#readme",
-  "description": ""
+  "description": "",
+  "dependencies": {
+    "mariadb": "^3.3.2",
+    "sequelize": "^6.37.3"
+  }
 }
