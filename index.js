@@ -4,16 +4,25 @@ const sequelize = new Sequelize(process.env.DATABASE, process.env.LOGIN, process
   host: process.env.HOST,
   dialect: process.env.DIALECT,
   port: process.env.PORT,
-  poll:{
-    max:10,// максимальное кол-во попыток
-    min:0,// минимальное кол-во попыток
-    idle:20000, // максимальное время ожидания в миллисекундах
-    acquire: 20000, // максимальное время ожидания в миллисекундах
-    evict: 20000, // максимальное время ожидания в миллисекундах
-
-  }
+  logging: false,
 });
 
+const context = {
+    _data:{
+        httpMethod: "DELETE",
+        path: "/delete",
+        queryStringParameters: {},
+        body: JSON.stringify({
+            // full_name: "Some new_name", 
+            // role: "new_role",  
+            // efficiency: 100
+        }),
+    }
+};
+
+/**
+ * Модель таблицы
+ */
 const User = sequelize.define('User', 
     {
         id : {
@@ -94,7 +103,6 @@ async function get(date = null) {
  * @returns 
  */
 async function update(id, date) {
-   
     await User.update(
         date, 
         {
@@ -139,10 +147,14 @@ async function del(id = 0) {
 
         return result === null ? {} : result.dataValues;
     }
-
 }
 
-
+/**
+ * Подготовка ответа на запрос
+ * @param {Object} date - Результат выполения запроса
+ * @param {Boolean} status - Статус ответа
+ * @returns 
+ */
 async function response(data = null, status = true){
     var result = new Object();
     result.success= status;
@@ -152,15 +164,57 @@ async function response(data = null, status = true){
     return JSON.stringify(result);
 }
 
-async function main() {
+/**
+ * Обрабатываем входящий запрос и прооброзовываем в нужный формат.
+ * @param {Object} context - Данные в запросе 
+ * @returns 
+ */
+async function routers(context) {
+    const getStr = context._data.path.match(/\/(create|get|update|delete)\/?[0-9]{0,}\/?$/iu);
+      
+    if (getStr) {
+        getArr = getStr[0].split('\/');
+        var func = getArr[1];
+        if (getArr[2]) {
+            context._data.queryStringParameters.id = getArr[2];
+        }
+    }
+
+    return {
+        method : context._data.httpMethod,
+        func : func,
+        data: {
+            params: context._data.queryStringParameters,
+            body: JSON.parse(context._data.body),
+        }
+    }
+}
+
+
+async function main(context) {
+    var result = new Object();
+
     try {
         await sequelize.authenticate();
-       
-        const result = await create({full_name: "Some Sumi", role: "some_role",  efficiency: 99 });
-        // const result = await get();
-        // const result = await update(2,{sdfa:"sdfa"});
-        // const result = await del(4);
-        
+
+        const route = await routers(context);
+
+        if (route.method == "POST" & route.func == "create") {
+            // Воледировать данные 
+            result = await create(route.data.body); 
+        } else if (route.method == "GET" && route.func == "get") {
+            // Воледировать данные 
+            result = await get(route.data.params); 
+        } else  if (route.method== "PATCH" & route.func == "update") {
+            // Воледировать данные 
+            result = await update(route.data.params.id, route.data.body); 
+        } else  if (route.method== "DELETE" & route.func == "delete") {
+            // Воледировать данные 
+            result = await del(route.data.params.id); 
+        } else {
+            throw new Error("No find");
+        }
+
         console.log(await response(result));
         return await response(result);
 
@@ -170,8 +224,7 @@ async function main() {
     } finally {
         sequelize.close();
     };
-
 }
 
-main();
+main(context);
 
