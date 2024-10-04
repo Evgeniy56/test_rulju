@@ -17,6 +17,7 @@
   "homepage": "https://github.com/Evgeniy56/test_rulju#readme",
   "description": "",
   "dependencies": {
+    "fastest-validator": "^1.19.0",
     "mariadb": "^3.3.2",
     "sequelize": "^6.37.3"
   }

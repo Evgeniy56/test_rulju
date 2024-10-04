@@ -1,4 +1,7 @@
-const { Sequelize, Model } = require('sequelize');
+const { Sequelize } = require('sequelize');
+const Validator = require("fastest-validator");
+
+const v = new Validator();
 
 const sequelize = new Sequelize(process.env.DATABASE, process.env.LOGIN, process.env.PASWWORD, {
   host: process.env.HOST,
@@ -9,15 +12,26 @@ const sequelize = new Sequelize(process.env.DATABASE, process.env.LOGIN, process
 
 const context = {
     _data:{
-        httpMethod: "DELETE",
-        path: "/delete",
+        httpMethod: "POST",
+        path: "/create",
         queryStringParameters: {},
         body: JSON.stringify({
-            // full_name: "Some new_name", 
-            // role: "new_role",  
-            // efficiency: 100
+            full_name: "Some new", 
+            role: "admin",  
+            efficiency: 100
         }),
     }
+};
+
+/**
+ * Схема валидации данных
+ */
+const schema = {
+    id: { type: "number", positive: true, integer: true , optional: true},
+    full_name: { type: "string", min: 3, max: 30, optional: true },
+    role: { type: "string", min: 3, max: 40 , optional: true},
+    efficiency: { type: "number", positive: true, integer: true ,optional: true,  }, 
+    $$strict: "remove",
 };
 
 /**
@@ -193,23 +207,28 @@ async function routers(context) {
 
 async function main(context) {
     var result = new Object();
-
+    
     try {
         await sequelize.authenticate();
 
         const route = await routers(context);
 
+        var checkResult = await v.validate(route.data.params, schema);
+        if (checkResult != true) {
+            throw new Error(checkResult[0].message);
+        } 
+        checkResult = await v.validate(route.data.body, schema);
+        if (checkResult != true) {
+            throw new Error(checkResult[0].message);
+        } 
+
         if (route.method == "POST" & route.func == "create") {
-            // Воледировать данные 
-            result = await create(route.data.body); 
+            result = await create(route.data.body);
         } else if (route.method == "GET" && route.func == "get") {
-            // Воледировать данные 
-            result = await get(route.data.params); 
+            result = await get(route.data.params);
         } else  if (route.method== "PATCH" & route.func == "update") {
-            // Воледировать данные 
             result = await update(route.data.params.id, route.data.body); 
         } else  if (route.method== "DELETE" & route.func == "delete") {
-            // Воледировать данные 
             result = await del(route.data.params.id); 
         } else {
             throw new Error("No find");
