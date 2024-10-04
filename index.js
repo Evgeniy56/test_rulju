@@ -1,9 +1,17 @@
 const { Sequelize, Model } = require('sequelize');
 
-const sequelize = new Sequelize(process.env.DATABASE, process.env.USER, process.env.PASWWORD, {
+const sequelize = new Sequelize(process.env.DATABASE, process.env.LOGIN, process.env.PASWWORD, {
   host: process.env.HOST,
   dialect: process.env.DIALECT,
   port: process.env.PORT,
+  poll:{
+    max:10,// максимальное кол-во попыток
+    min:0,// минимальное кол-во попыток
+    idle:20000, // максимальное время ожидания в миллисекундах
+    acquire: 20000, // максимальное время ожидания в миллисекундах
+    evict: 20000, // максимальное время ожидания в миллисекундах
+
+  }
 });
 
 const User = sequelize.define('User', 
@@ -30,6 +38,7 @@ const User = sequelize.define('User',
     {
         tableName: 'user',
         timestamps: false,
+        raw: true,
     }   
 );
 
@@ -39,8 +48,13 @@ const User = sequelize.define('User',
  * @returns 
  */
 async function create(user) {
-
-    return await User.create(user);
+    var result = await User.create(user)
+        .then((result) => {
+            return {id: result.id}
+        }).catch((err) => {
+            throw new Error(err.errors[0]);
+        });
+    return result;
 }
 
 /**
@@ -50,7 +64,8 @@ async function create(user) {
  */
 async function get(date = null) {
     
-    return await User.findAll({
+    var result =[]; 
+    var users = await User.findAll({
         attributes: [
             'id',
             'full_name', 
@@ -58,7 +73,18 @@ async function get(date = null) {
             'efficiency'
         ],
         where: date 
+    })
+    .then((result) => {
+        return result;
+    }).catch((err) => {
+        throw new Error(err.errors[0]);
     });
+
+    for (const user of users) {
+        result.push(user.dataValues);
+    }
+
+    return {users: result};
 }
 
 /**
@@ -72,18 +98,17 @@ async function update(id, date) {
     await User.update(
         date, 
         {
-            where: {
-                id: id
-            }
+            where: {id: id}
         }
-    );
-
-    return await User.findOne({
-        where: {
-            id: id
-        }
+    ).catch((err) => {
+        throw new Error(err.errors[0]);
     });
 
+    const result = await User.findOne({
+        where: {id: id}
+    });
+
+    return result === null ? {} : result.dataValues;
 }
 
 /**
@@ -94,14 +119,15 @@ async function update(id, date) {
 async function del(id = 0) {
 
     if (id == 0 ) {
-        return await User.destroy({
+        await User.destroy({
             truncate: true,
           });
+        return null;
 
     } else {
-        var user = await User.findOne({
+        var result = await User.findOne({
             where:{
-               id: id
+                id: id
             }
         });
 
@@ -111,36 +137,41 @@ async function del(id = 0) {
             }
         });
 
-        return user;
+        return result === null ? {} : result.dataValues;
     }
 
 }
 
 
+async function response(data = null, status = true){
+    var result = new Object();
+    result.success= status;
+    if (data) {
+        result.result = data;
+    }
+    return JSON.stringify(result);
+}
+
 async function main() {
     try {
         await sequelize.authenticate();
-        console.log('Connection has been established successfully.');
-    
        
-        // const userID = await create({full_name: "Som Semi", efficiency: 90 });
-        // console.log(userID.id);
+        const result = await create({full_name: "Some Sumi", role: "some_role",  efficiency: 99 });
+        // const result = await get();
+        // const result = await update(2,{sdfa:"sdfa"});
+        // const result = await del(4);
+        
+        console.log(await response(result));
+        return await response(result);
 
-        // console.log(await get());
-
-        // const user = await update(42,{role:'admin'})
-        // console.log(user.dataValues);
-
-        const user = await del();
-        console.log( user === null ? user : user.dataValues);
-
-        sequelize.close();
     } catch (error) {
-        console.error('Error message:', error.message);
-      }
+        console.error(await response({error : error.message}, false));
+        return await response({error : error.message}, false);
+    } finally {
+        sequelize.close();
+    };
 
 }
 
-console.log(User === sequelize.models.User);
 main();
 
