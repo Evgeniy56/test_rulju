@@ -10,24 +10,10 @@ const sequelize = new Sequelize(process.env.DATABASE, process.env.LOGIN, process
   logging: false,
 });
 
-const context = {
-    _data:{
-        httpMethod: "POST",
-        path: "/create",
-        queryStringParameters: {},
-        body: JSON.stringify({
-            full_name: "Some new", 
-            role: "admin",  
-            efficiency: 100
-        }),
-    }
-};
-
 /**
  * Схема валидации данных
  */
 const schema = {
-    id: { type: "number", positive: true, integer: true , optional: true},
     full_name: { type: "string", min: 3, max: 30, optional: true },
     role: { type: "string", min: 3, max: 40 , optional: true},
     efficiency: { type: "number", positive: true, integer: true ,optional: true,  }, 
@@ -75,7 +61,7 @@ async function create(user) {
         .then((result) => {
             return {id: result.id}
         }).catch((err) => {
-            throw new Error(err.errors[0]);
+            throw new Error(err.errors[0].message);
         });
     return result;
 }
@@ -100,7 +86,7 @@ async function get(date = null) {
     .then((result) => {
         return result;
     }).catch((err) => {
-        throw new Error(err.errors[0]);
+        throw new Error(err.errors[0].message);
     });
 
     for (const user of users) {
@@ -123,7 +109,7 @@ async function update(id, date) {
             where: {id: id}
         }
     ).catch((err) => {
-        throw new Error(err.errors[0]);
+        throw new Error(err.errors[0].message);
     });
 
     const result = await User.findOne({
@@ -184,28 +170,24 @@ async function response(data = null, status = true){
  * @returns 
  */
 async function routers(context) {
-    const getStr = context._data.path.match(/\/(create|get|update|delete)\/?[0-9]{0,}\/?$/iu);
-      
-    if (getStr) {
-        getArr = getStr[0].split('\/');
-        var func = getArr[1];
-        if (getArr[2]) {
-            context._data.queryStringParameters.id = getArr[2];
-        }
-    }
+
+    try{
+        var body = JSON.parse(context._data.body);
+    } catch {
+        var body = {};
+    }    
 
     return {
-        method : context._data.httpMethod,
-        func : func,
-        data: {
-            params: context._data.queryStringParameters,
-            body: JSON.parse(context._data.body),
-        }
+        method: context._data.httpMethod,
+        path: context._data.path,
+        id: context._data.params.user_id ? context._data.params.user_id : null,
+        params: context._data.queryStringParameters ? context._data.queryStringParameters : {},
+        body: body,
     }
 }
 
 
-async function main(context) {
+module.exports.handler = async function (event, context) {
     var result = new Object();
     
     try {
@@ -213,37 +195,43 @@ async function main(context) {
 
         const route = await routers(context);
 
-        var checkResult = await v.validate(route.data.params, schema);
-        if (checkResult != true) {
+        var checkResult = await v.validate(route.body, schema)
+        if ( checkResult != true & (route.path == "/create" | route.path == "/update/{user_id}")) 
             throw new Error(checkResult[0].message);
-        } 
-        checkResult = await v.validate(route.data.body, schema);
-        if (checkResult != true) {
-            throw new Error(checkResult[0].message);
-        } 
 
-        if (route.method == "POST" & route.func == "create") {
-            result = await create(route.data.body);
-        } else if (route.method == "GET" && route.func == "get") {
-            result = await get(route.data.params);
-        } else  if (route.method== "PATCH" & route.func == "update") {
-            result = await update(route.data.params.id, route.data.body); 
-        } else  if (route.method== "DELETE" & route.func == "delete") {
-            result = await del(route.data.params.id); 
+        if (route.method == "POST" & route.path == "/create") {
+            result = await create(route.body);
+        } else if (route.method == "GET" & route.path == "/get") {
+            result = await get(route.params);
+        } else if (route.method == "GET" & route.path == "/get/{user_id}") {
+            result = await get(Object.assign({id: route.id},route.params));
+        } else  if (route.method== "PATCH" & route.path == "/update/{user_id}") {
+            result = await update(route.id, route.body); 
+        } else  if (route.method== "DELETE" &  route.path == "/delete/{user_id}") {
+            result = await del(route.id); 
+        } else if (route.method== "DELETE" & route.path == "/delete"){
+            result = await del(); 
         } else {
             throw new Error("No find");
         }
 
-        console.log(await response(result));
-        return await response(result);
+        return {
+            'statusCode': 200,
+            'body': await response(result),
+            'headers': {
+                'Content-Type': 'application/json',
+            },
+            'isBase64Encoded': false,
+        }
 
     } catch (error) {
-        console.error(await response({error : error.message}, false));
-        return await response({error : error.message}, false);
-    } finally {
-        sequelize.close();
+        return {
+            'statusCode': 500,
+            'body': await response({error : error.message}, false),
+            'headers': {
+                'Content-Type': 'application/json',
+            },
+            'isBase64Encoded': false,
+        };
     };
 }
-
-main(context);
-
